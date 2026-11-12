@@ -24,6 +24,7 @@ magic and items, a new land, and fixes for the game itself.
 - [Keys](#keys)
 - [Reporting problems](#reporting-problems)
 - [Making your own mods](#making-your-own-mods)
+- [Source code](#source-code)
 - [Legal](#legal)
 
 ## Requirements
@@ -217,6 +218,12 @@ The **developer kit** (`AttT_Mods_<version>_DeveloperKit.zip`, or the installer'
 A mod is a plain-text Lua file in the `Mods` folder plus its line in `Mods\modlist.lua` - nothing is
 compiled. The installer can also copy the game's own scripts out of its paks for you to study
 (`AttT_Mods_Installer.exe files` / `extract`); those files belong to the game, so please don't share them.
+
+## Source code
+
+The source of the framework's program files - the five DLLs and the AttT Mod Manager - is in
+[`source/`](source/), with build instructions and the SHA-256 checksums of the released files. Built with the
+same compiler, the DLLs come out with identical code and data; only their build timestamps differ.
 
 ## Legal
 
