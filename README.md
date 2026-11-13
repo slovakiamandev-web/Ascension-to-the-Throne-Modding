@@ -62,7 +62,7 @@ in [`source/`](source/).
    `ModFramework` and the folder `Mods`. It never replaces one of the game's own files.
 3. Start `AttT Mod Manager.exe` once. It puts the framework's file in place - `Resource2.pak` (in the Polish
    game `Resource3.pak`) next to the game's own files, which stay untouched. The window title then says
-   "framework 2.0".
+   "framework 2.0.1".
 4. Install the **Overhaul**: press **Install...** in the manager and pick its zip - or unpack the zip into the
    game folder.
 5. Press **Play** in the manager, or start the game from Steam as always - both load the mods.

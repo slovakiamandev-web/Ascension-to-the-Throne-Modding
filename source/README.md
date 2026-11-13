@@ -1,6 +1,6 @@
 # Source code of the AttT Mod Framework's programs
 
-The source of every program file in the **AttT Mod Framework 2.0** download: the five DLLs in
+The source of every program file in the **AttT Mod Framework 2.0.1** download: the five DLLs in
 `ModFramework\` and `AttT Mod Manager.exe`. Everything else in the download is plain text (Lua scripts,
 settings, READMEs) or data.
 
@@ -54,10 +54,10 @@ With the C# compiler that comes with Windows (.NET Framework 4.x):
 
 (The C# compiler stamps each build with a new id, so a rebuild is never byte-identical.)
 
-## SHA-256 of the released files (AttT_Mod_Framework_2.0.zip)
+## SHA-256 of the released files (AttT_Mod_Framework_2.0.1.zip)
 
 ```
-3332ac2f9df1ef9e680bcbec2264d9df8931bac57b90753b6c14d2e3dce763a4  AttT Mod Manager.exe
+047c3a7ba8209060c829eeec893f04587e1f8a5459a37aea1a89ceffba9dbfb8  AttT Mod Manager.exe
 5d93476b4a273770c1c4dbc4a6b06e999de9146b2ae804b8aa10d67a7bc46a70  ModFramework/engine.dll
 2e726fbd7da095346cbf62041c43ba011efe4faac9f4737c26fc4ae0f57d8d34  ModFramework/keybridge.dll
 e46e586a39d43c34afb1a12b658a01cebf5a490395976d809fc744281c84cf85  ModFramework/leakfix.dll

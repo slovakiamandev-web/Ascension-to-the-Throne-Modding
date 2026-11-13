@@ -26,7 +26,7 @@ using System.Windows.Forms;
 [assembly: System.Reflection.AssemblyCompany("slovakiaman")]
 [assembly: System.Reflection.AssemblyCopyright("AttT Mod Framework by slovakiaman")]
 [assembly: System.Reflection.AssemblyDescription("Mod manager and launcher for Ascension to the Throne, by slovakiaman")]
-[assembly: System.Reflection.AssemblyVersion("2.0.0.0")]
+[assembly: System.Reflection.AssemblyVersion("2.0.1.0")]
 
 namespace AttTModManager
 {
@@ -1089,10 +1089,17 @@ namespace AttTModManager
                                 "AttT Mod Manager", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
             try
             {
-                Process.Start(new ProcessStartInfo(Path.Combine(set.GameDir, "ATThrone.exe")) { WorkingDirectory = set.GameDir, UseShellExecute = false });
+                // Started the way Explorer starts it: a game marked "Run as administrator" (Compatibility tab) then
+                // shows the usual Windows prompt instead of failing with "requires elevation".
+                Process.Start(new ProcessStartInfo(Path.Combine(set.GameDir, "ATThrone.exe")) { WorkingDirectory = set.GameDir, UseShellExecute = true });
                 WindowState = FormWindowState.Minimized;
             }
-            catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not start the game", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+            catch (Exception ex)
+            {
+                var w = ex as System.ComponentModel.Win32Exception;
+                if (w != null && w.NativeErrorCode == 1223) return;   // the player said No to the prompt
+                MessageBox.Show(this, ex.Message, "Could not start the game", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
     }
 
