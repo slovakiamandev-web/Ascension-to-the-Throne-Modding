@@ -52,6 +52,12 @@
  *       detour|<file>|<contour>|<after>|<at x>|<at z>|<x>|<z>|...
  *                                              collision model (.gdl): a walkable gap / pocket in
  *                                              the invisible walls (as tools/make_collision_edits.py)
+ *       drop|<file>|<record>                   static model (.gdl): the record of that name (any depth,
+ *                                              with its children) left out
+ *       character|<file>|<r1>,<r2>,...|<x0>|<y0>|<z0>|<x1>|<y1>|<z1>
+ *                                              static model (.gdl) -> character model (.skm): those
+ *                                              records, one part each on one bone, box x0..x1 etc.
+ *                                              (as tools/make_gate_doors.py)
  *    Built once per run, so no mod ships a changed game file and a changed mod is picked up the
  *    next time it loads.
  *
@@ -64,7 +70,7 @@
  * quadtree and "Continent3" literals (see str_ne_hook / str_eq_hook).
  *
  * Exports (no Lua arguments; call through package.loadlib):
- *   rs_install  check the code at Find, pin this DLL, install the detour (once per process)
+ *   rs_install  pick the game build (BUILDS), pin this DLL, install the detours (once per process)
  *   rs_reload   re-read both files (call after changing them)
  *   rs_list_mods  the folders in Mods/ -> mod_folders.txt next to this DLL (for ModAPI.LoadMods)
  * Status goes to Mods/resources.log; every requested name too while
@@ -83,7 +89,6 @@
 #include <ctype.h>
 #include <float.h>
 
-#define FIND_ADDR  0x4514B0
 #define MAX_MAP    512
 #define MAX_EDITS  256
 
@@ -99,6 +104,28 @@ typedef void *(__fastcall *FindFn)(void *self, void *edx, const MsString *name);
 
 static const unsigned char FIND_PROLOGUE[] = { 0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x6A, 0xFF, 0x68 };
 static unsigned char trampoline[16];
+
+/* ---- the game builds this DLL knows ----
+ * Every address below belongs to one exe; the build is picked by checking the code and the
+ * string literals at its addresses (rs_install). The sequel's addresses were found with
+ * tools/exe_match.py (same functions, same code, other places; 2026-11-14). */
+typedef struct {
+    const char *name;
+    DWORD find, info, read, run;     /* ResourceManager::Find, pak Info / Read, RunScript */
+    unsigned char run_prologue[9];   /* RunScript's first bytes (its SEH handler's address inside) */
+    DWORD iat_ne, iat_eq;            /* MSVCP80 operator!= / operator==(string, const char *) */
+    DWORD refl[3];                   /* "Continent<1-3>Reflection_QuadTree.dat" */
+    DWORD cont3;                     /* "Continent3" */
+} Build;
+static const Build BUILDS[] = {
+    { "Ascension to the Throne", 0x4514B0, 0x576A90, 0x576820, 0x432620,
+      { 0x6A, 0xFF, 0x68, 0x5A, 0x63, 0x5E, 0x00, 0x64, 0xA1 },
+      0x607214, 0x6071E4, { 0x60FEA0, 0x60FE7C, 0x60FE58 }, 0x614174 },
+    { "Ascension to the Throne: Valkyrie", 0x589260, 0x6AE3F0, 0x6AE100, 0x569DD0,
+      { 0x6A, 0xFF, 0x68, 0x1A, 0x03, 0x72, 0x00, 0x64, 0xA1 },
+      0x7412D8, 0x741394, { 0x749EB0, 0x749E8C, 0x749E68 }, 0x74E454 },
+};
+static const Build *build;           /* NULL until rs_install recognised the exe */
 static FindFn original_find;
 
 typedef struct { char name[128]; char path[MAX_PATH]; } MapEntry;
@@ -590,16 +617,24 @@ static int raise_heightmap(unsigned char *data, DWORD size, int continent)
     free(dv);
     free(q);
     {
-        /* a level floor: every grid point at exactly the walk height */
-        float walk, off = *(float *)(data + 16 + 2 * w * h + 4), v;
+        /* a level floor: every grid point at exactly the walk height - except inside a height grid,
+           where the walking height keeps following the drawn ground (set above, with its fine
+           detail): a battle draws its hexes at the walking height, and at a flat level under the
+           drawn ground's bumps they were hidden (the pyramid's arena, 2026-11-15) */
+        float walk, off = *(float *)(data + 16 + 2 * w * h + 4), v, gh, gx, gz;
         if (flat_walk(continent, &walk)) {
             unsigned short *cell = (unsigned short *)(data + 16), value;
-            size_t at;
+            DWORD i, j;
             v = (walk - off) * div;
             value = (unsigned short)(v < 0 ? 0 : v > 65535 ? 65535 : v + 0.5f);
-            for (at = 0; at < (size_t)w * h; at++)
-                cell[at] = value;
-            count = (int)(w * h);
+            count = 0;
+            for (i = 0; i < w; i++)
+                for (j = 0; j < h; j++) {
+                    if (grid_at(continent, (float)(ox + 5 * (int)i), (float)(oz + 5 * (int)j), &gh, &gx, &gz))
+                        continue;
+                    cell[(size_t)i * h + j] = value;
+                    count++;
+                }
         }
     }
     return count;
@@ -1685,7 +1720,112 @@ static int gdl_detour(Rec **roots, DWORD nroots, char **f, int nf)
     return 1;
 }
 
-/* all the gap/detour edits of one model, in their order; returns how many applied, < 0 on a bad file */
+/* every record named `name` under r (not r itself) left out, with its children; returns how many */
+static int rec_drop(Rec *r, const char *name)
+{
+    DWORD i, j = 0;
+    int n = 0;
+    for (i = 0; i < r->nc; i++) {
+        Rec *k = r->kids[i];
+        if (k->nlen == strlen(name) && memcmp(k->name, name, k->nlen) == 0) {
+            rec_free(k);
+            n++;
+        } else {
+            n += rec_drop(k, name);
+            r->kids[j++] = k;
+        }
+    }
+    r->nc = j;
+    return n;
+}
+
+/* the records listed in f[2] ("a,b,...") as a character model (.skm), one skinned part each with all of
+ * its vertices on one bone (part i = animation block i), box f[3..8] (see tools/attt_models.py,
+ * records_to_skm: static and character models share the vertex layout, winding and material colours) */
+static int gdl_character(Buf *b, Rec **roots, DWORD nroots, char **f)
+{
+    char names[256], *p, *next;
+    Buf out = { NULL, 0 };
+    DWORD zero = 0, one = 1, part = 0, i;
+    int ok = 1;
+    float lo[3], hi[3];
+
+    for (i = 0; i < 3; i++) {
+        lo[i] = (float)strtod(f[3 + i], NULL);
+        hi[i] = (float)strtod(f[6 + i], NULL);
+    }
+    strncpy(names, f[2], sizeof(names) - 1);
+    names[sizeof(names) - 1] = 0;
+    ok = buf_add(&out, &zero, 4);                     /* part count, set below */
+    for (p = names; ok && p != NULL && *p; p = next) {
+        Rec *r = NULL;
+        DWORD k, nidx, nm, mo, nlen;
+        char label[160];
+        next = strchr(p, ',');
+        if (next != NULL)
+            *next++ = 0;
+        for (i = 0; r == NULL && i < nroots; i++)
+            r = rec_find(roots[i], p);
+        if (r == NULL || r->nv > 65535 || r->mlen < 8 || r->nlen > 120) {
+            free(out.d);
+            return -2;
+        }
+        nlen = (DWORD)sprintf(label, "%u%.*s", (unsigned)(part + 1), (int)r->nlen, (const char *)r->name);
+        nidx = r->nf * 3;
+        ok = ok && buf_add(&out, &nlen, 4) && buf_add(&out, label, nlen) && buf_add(&out, &nidx, 4) &&
+             buf_add(&out, r->faces, r->nf * 6);
+        for (i = 0; ok && i < 3; i++) {               /* positions, normals, uvs */
+            DWORD size = i < 2 ? 12 : 8;
+            ok = buf_add(&out, &r->nv, 4);
+            for (k = 0; ok && k < r->nv; k++)
+                ok = buf_add(&out, r->verts + 32 * k + 12 * i, size);
+        }
+        /* one bone owning every position; every vertex on that bone alone */
+        ok = ok && buf_add(&out, &one, 4) && buf_add(&out, &zero, 4) && buf_add(&out, &r->nv, 4) &&
+             buf_add(&out, &r->nv, 4);
+        for (k = 0; ok && k < r->nv; k++) {
+            unsigned short v = (unsigned short)k;
+            ok = buf_add(&out, &v, 2);
+        }
+        ok = ok && buf_add(&out, &zero, 4) && buf_add(&out, &zero, 4) && buf_add(&out, &zero, 4);
+        nm = *(const DWORD *)(r->mats + 4);
+        ok = ok && buf_add(&out, &nm, 4);
+        mo = 8;
+        for (k = 0; ok && k < nm; k++) {              /* colours, texture, first index; no face count */
+            DWORD tl = *(const DWORD *)(r->mats + mo + 68);
+            ok = buf_add(&out, r->mats + mo, 68 + 4 + tl + 2);
+            mo += 68 + 4 + tl + 2 + 4;
+        }
+        ok = ok && buf_add(&out, &part, 4);
+        part++;
+    }
+    if (part == 0)
+        ok = 0;
+    if (ok) {
+        int y, x, z;
+        memcpy(out.d, &part, 4);
+        ok = buf_add(&out, &zero, 4);                 /* no rigid parts */
+        for (y = 0; ok && y < 2; y++)                 /* x0y0z0 x0y0z1 x1y0z0 x1y0z1 x0y1z0 ... */
+            for (x = 0; ok && x < 2; x++)
+                for (z = 0; ok && z < 2; z++) {
+                    float c[3];
+                    c[0] = x ? hi[0] : lo[0];
+                    c[1] = y ? hi[1] : lo[1];
+                    c[2] = z ? hi[2] : lo[2];
+                    ok = buf_add(&out, c, 12);
+                }
+    }
+    if (!ok) {
+        free(out.d);
+        return -3;
+    }
+    free(b->d);
+    *b = out;
+    return (int)part;
+}
+
+/* all the gap/detour/drop edits of one model, in their order, then a "character" edit; returns how many
+ * applied, < 0 on a bad file */
 static int edit_gdl(Buf *b, const char *name)
 {
     Rec *roots[64];
@@ -1716,7 +1856,20 @@ static int edit_gdl(Buf *b, const char *name)
             r = gdl_gap(roots, nroots, e->f);
         else if (strcmp(e->f[0], "detour") == 0)
             r = gdl_detour(roots, nroots, e->f, e->n);
-        else
+        else if (strcmp(e->f[0], "drop") == 0 && e->n == 3) {
+            DWORD j = 0;
+            for (i = 0; i < nroots; i++) {
+                r += rec_drop(roots[i], e->f[2]);
+                if (roots[i]->nlen == strlen(e->f[2]) && memcmp(roots[i]->name, e->f[2], roots[i]->nlen) == 0) {
+                    rec_free(roots[i]);
+                    r++;
+                } else
+                    roots[j++] = roots[i];
+            }
+            nroots = j;
+            if (r == 0)
+                r = -5;
+        } else
             continue;
         if (r > 0)
             applied++;
@@ -1725,6 +1878,7 @@ static int edit_gdl(Buf *b, const char *name)
     }
     if (buf_add(&out, b->d, 20)) {
         int ok = 1;
+        memcpy(out.d + 16, &nroots, 4);
         for (i = 0; ok && i < nroots; i++)
             ok = rec_write(&out, roots[i]);
         if (ok && buf_add(&out, b->d + tail, b->n - tail)) {
@@ -1733,6 +1887,19 @@ static int edit_gdl(Buf *b, const char *name)
             out.d = NULL;
         } else
             applied = -3;
+    }
+    /* last: the model turned into a character model */
+    for (k = 0; applied >= 0 && k < nfedits; k++) {
+        FileEdit *e = &fedits[k];
+        int r;
+        if (_stricmp(e->f[1], name) != 0 || strcmp(e->f[0], "character") != 0)
+            continue;
+        r = e->n == 9 ? gdl_character(b, roots, nroots, e->f) : -1;
+        if (r > 0)
+            applied++;
+        else
+            logmsg("file edit %s: character %s failed (%d)", name, e->f[2], r);
+        break;
     }
     free(out.d);
     for (i = 0; i < nroots; i++)
@@ -1771,7 +1938,8 @@ static int build_file_now(const char *name, char *out)
             has = 1;
             if (strcmp(fedits[k].f[0], "from") == 0 && fedits[k].n >= 3)
                 source = fedits[k].f[2];
-            if (strcmp(fedits[k].f[0], "gap") == 0 || strcmp(fedits[k].f[0], "detour") == 0)
+            if (strcmp(fedits[k].f[0], "gap") == 0 || strcmp(fedits[k].f[0], "detour") == 0 ||
+                strcmp(fedits[k].f[0], "drop") == 0 || strcmp(fedits[k].f[0], "character") == 0)
                 gdl = 1;
         }
     if (!has)
@@ -1803,7 +1971,7 @@ static int build_file_now(const char *name, char *out)
         const char *kind = e->f[0];
         int r = -9;
         if (_stricmp(e->f[1], name) != 0 || strcmp(kind, "from") == 0 || strcmp(kind, "gap") == 0 ||
-            strcmp(kind, "detour") == 0)
+            strcmp(kind, "detour") == 0 || strcmp(kind, "drop") == 0 || strcmp(kind, "character") == 0)
             continue;
         if (strcmp(kind, "set") == 0 && e->n == 4)
             r = text_set(&b, e->f[2], e->f[3]);
@@ -1829,7 +1997,7 @@ static int build_file_now(const char *name, char *out)
     if (gdl) {
         int r = edit_gdl(&b, name);
         if (r < 0)
-            logmsg("file edit %s: not a usable collision model (%d) - walls left alone", name, r);
+            logmsg("file edit %s: not a usable static model (%d) - left alone", name, r);
         else
             done += r;
     }
@@ -2049,8 +2217,6 @@ static void *__fastcall find_hook(void *self, void *edx, const MsString *name)
  *       {size, offset, std::string name (+8), pak (+0x24)}; opens the disk when the name has ':'
  * The caller fills the request with the ORIGINAL name, so both steps are swapped: Info gets the
  * mod file's path (real size), Read runs on a copy of the request that carries that path. */
-#define INFO_ADDR 0x576A90
-#define READ_ADDR 0x576820
 typedef DWORD *(__fastcall *InfoFn)(void *self, void *edx, DWORD *out, const MsString *name);
 typedef void *(__fastcall *ReadFn)(void *request, void *edx);
 static const unsigned char INFO_PROLOGUE[] = { 0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x6A, 0xFF, 0x68 };
@@ -2094,9 +2260,7 @@ static void *__fastcall read_hook(void *request, void *edx)
  * itself (continent<N>Time, ...Towns, ...MusicManager, ...). A missing script throws
  * CGameException ("... - continent4npcs.lua") and the game dies. Alias rules apply
  * here too, for names that are not in the paks. */
-#define RUN_ADDR 0x432620
 typedef int (__fastcall *RunFn)(void *self, void *edx, const char *name);
-static const unsigned char RUN_PROLOGUE[] = { 0x6A, 0xFF, 0x68, 0x5A, 0x63, 0x5E, 0x00, 0x64, 0xA1 };
 static unsigned char run_trampoline[16];
 static RunFn original_run;
 
@@ -2138,8 +2302,6 @@ static int __fastcall run_hook(void *self, void *edx, const char *name)
  *    (0x51C073; literals 0x61418C, 0x614180, 0x614174).
  * The wrappers change the answer only for those literal addresses; every other comparison
  * in the game goes straight to the original. */
-#define IAT_STR_NE 0x607214
-#define IAT_STR_EQ 0x6071E4
 typedef unsigned char (__cdecl *StrCmpFn)(const MsString *l, const char *r);
 static StrCmpFn original_ne, original_eq;
 
@@ -2159,7 +2321,7 @@ static int is_extra_continent(const char *s)
 
 static unsigned char __cdecl str_ne_hook(const MsString *l, const char *r)
 {
-    if ((DWORD)r == 0x60FEA0 || (DWORD)r == 0x60FE7C || (DWORD)r == 0x60FE58) {
+    if ((DWORD)r == build->refl[0] || (DWORD)r == build->refl[1] || (DWORD)r == build->refl[2]) {
         const char *s = ms_text(l);
         if (ends_with_nocase(s, "Reflection_QuadTree.dat"))
             return 0;                                   /* "equal": it is a reflection */
@@ -2169,7 +2331,7 @@ static unsigned char __cdecl str_ne_hook(const MsString *l, const char *r)
 
 static unsigned char __cdecl str_eq_hook(const MsString *l, const char *r)
 {
-    if ((DWORD)r == 0x614174 && is_extra_continent(ms_text(l)))
+    if ((DWORD)r == build->cont3 && is_extra_continent(ms_text(l)))
         return 1;                                       /* counts as a continent */
     return original_eq(l, r);
 }
@@ -2232,6 +2394,38 @@ static int detour(unsigned char *target, const unsigned char *expect, size_t exp
     return 1;
 }
 
+/* `n` bytes at `addr` are committed, readable memory of this process */
+static int readable(DWORD addr, size_t n)
+{
+    MEMORY_BASIC_INFORMATION mbi;
+    if (VirtualQuery((void *)addr, &mbi, sizeof(mbi)) == 0 || mbi.State != MEM_COMMIT ||
+        (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) || mbi.Protect == 0)
+        return 0;
+    return (DWORD)mbi.BaseAddress + mbi.RegionSize >= addr + n;
+}
+
+static int literal_is(DWORD addr, const char *text)
+{
+    return readable(addr, strlen(text) + 1) && memcmp((void *)addr, text, strlen(text) + 1) == 0;
+}
+
+/* the build whose code and literals are where it expects them */
+static const Build *pick_build(void)
+{
+    size_t i;
+    for (i = 0; i < sizeof(BUILDS) / sizeof(BUILDS[0]); i++) {
+        const Build *b = &BUILDS[i];
+        if (readable(b->find, sizeof(FIND_PROLOGUE)) &&
+            memcmp((void *)b->find, FIND_PROLOGUE, sizeof(FIND_PROLOGUE)) == 0 &&
+            literal_is(b->refl[0], "Continent1Reflection_QuadTree.dat") &&
+            literal_is(b->refl[1], "Continent2Reflection_QuadTree.dat") &&
+            literal_is(b->refl[2], "Continent3Reflection_QuadTree.dat") &&
+            literal_is(b->cont3, "Continent3"))
+            return b;
+    }
+    return NULL;
+}
+
 static void init_folder(void)
 {
     HMODULE self;
@@ -2286,7 +2480,7 @@ __declspec(dllexport) int rs_reload(void *L)
 __declspec(dllexport) int rs_install(void *L)
 {
     static int installed = 0;
-    unsigned char *site = (unsigned char *)FIND_ADDR;
+    unsigned char *site;
     HMODULE self;
     DWORD old;
 
@@ -2302,10 +2496,12 @@ __declspec(dllexport) int rs_install(void *L)
         logmsg("already installed: %d replacement(s), %d terrain edit(s)", nmap, nedits);
         return 0;
     }
-    if (memcmp(site, FIND_PROLOGUE, sizeof(FIND_PROLOGUE)) != 0) {
-        logmsg("unexpected code at ResourceManager::Find - not installed (other game build?)");
+    build = pick_build();
+    if (build == NULL) {
+        logmsg("unknown game build (no known ResourceManager::Find) - not installed");
         return 0;
     }
+    site = (unsigned char *)build->find;
     /* the game unloads Lua's C libraries when it replaces its Lua state; the
        detour must never point into an unloaded DLL */
     if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
@@ -2330,19 +2526,19 @@ __declspec(dllexport) int rs_install(void *L)
     FlushInstructionCache(GetCurrentProcess(), site, 6);
     installed = 1;
     original_run = (RunFn)(void *)run_trampoline;
-    if (!detour((unsigned char *)RUN_ADDR, RUN_PROLOGUE, sizeof(RUN_PROLOGUE), 7, run_trampoline, (void *)run_hook))
+    if (!detour((unsigned char *)build->run, build->run_prologue, sizeof(build->run_prologue), 7, run_trampoline, (void *)run_hook))
         logmsg("unexpected code at RunScript - script aliases off");
     /* both or neither: the second step must see the same swap as the first */
     original_info = (InfoFn)(void *)info_trampoline;
     original_read = (ReadFn)(void *)read_trampoline;
-    if (memcmp((void *)INFO_ADDR, INFO_PROLOGUE, sizeof(INFO_PROLOGUE)) != 0 ||
-        memcmp((void *)READ_ADDR, READ_PROLOGUE, sizeof(READ_PROLOGUE)) != 0 ||
-        !detour((unsigned char *)READ_ADDR, READ_PROLOGUE, sizeof(READ_PROLOGUE), 8, read_trampoline, (void *)read_hook) ||
-        !detour((unsigned char *)INFO_ADDR, INFO_PROLOGUE, sizeof(INFO_PROLOGUE), 6, info_trampoline, (void *)info_hook))
+    if (memcmp((void *)build->info, INFO_PROLOGUE, sizeof(INFO_PROLOGUE)) != 0 ||
+        memcmp((void *)build->read, READ_PROLOGUE, sizeof(READ_PROLOGUE)) != 0 ||
+        !detour((unsigned char *)build->read, READ_PROLOGUE, sizeof(READ_PROLOGUE), 8, read_trampoline, (void *)read_hook) ||
+        !detour((unsigned char *)build->info, INFO_PROLOGUE, sizeof(INFO_PROLOGUE), 6, info_trampoline, (void *)info_hook))
         logmsg("unexpected code at the pak manager's Info/Read - files read that way stay the paks' (forests)");
-    if (!patch_slot(IAT_STR_NE, (void *)str_ne_hook, (void **)&original_ne) ||
-        !patch_slot(IAT_STR_EQ, (void *)str_eq_hook, (void **)&original_eq))
+    if (!patch_slot(build->iat_ne, (void *)str_ne_hook, (void **)&original_ne) ||
+        !patch_slot(build->iat_eq, (void *)str_eq_hook, (void **)&original_eq))
         logmsg("string compare slots not as expected - continents beyond 3 unsupported");
-    logmsg("installed: %d replacement(s), %d terrain edit(s), %d alias rule(s)", nmap, nedits, nalias);
+    logmsg("installed: %d replacement(s), %d terrain edit(s), %d alias rule(s) - %s", nmap, nedits, nalias, build->name);
     return 0;
 }

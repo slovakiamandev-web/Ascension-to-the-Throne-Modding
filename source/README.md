@@ -57,12 +57,12 @@ With the C# compiler that comes with Windows (.NET Framework 4.x):
 ## SHA-256 of the released files (AttT_Mod_Framework_2.0.1.zip)
 
 ```
-047c3a7ba8209060c829eeec893f04587e1f8a5459a37aea1a89ceffba9dbfb8  AttT Mod Manager.exe
-5d93476b4a273770c1c4dbc4a6b06e999de9146b2ae804b8aa10d67a7bc46a70  ModFramework/engine.dll
+c7abafd430dab50c322e290c8a8f4889382ceb29715a10f488aa578b70c6c1b2  AttT Mod Manager.exe
+2c1190251032498b7e4390f91a78d8f8b7a864b1aee4333181a33f1cb6293491  ModFramework/engine.dll
 2e726fbd7da095346cbf62041c43ba011efe4faac9f4737c26fc4ae0f57d8d34  ModFramework/keybridge.dll
 e46e586a39d43c34afb1a12b658a01cebf5a490395976d809fc744281c84cf85  ModFramework/leakfix.dll
 40d79feeca5d430ee750fbcc564a6f49e6ab4d4c33d0542374e50c5b87dadb56  ModFramework/mousescale.dll
-22c93e95d3710e5372a4cb72001a015495ef92ad2f66c5513e1651a9e33cf994  ModFramework/resources.dll
+5acb81f4b2042406c2148e783ed103726037bd30d1f502a32bde0dea79ac5938  ModFramework/resources.dll
 ```
 
 The comments in the sources refer to the development project's own notes and folders (`CLAUDE.md`,

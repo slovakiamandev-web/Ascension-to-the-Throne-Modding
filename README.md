@@ -7,6 +7,8 @@ Mods and modding tools for **Ascension to the Throne** (DVS / 1C, 2007), by slov
   with - and five fixes for the game itself.
 - **AttT Overhaul** - a collection of mods built on it: new quests and story, reworked magic and items, new
   lands, and a rebalanced game.
+- **Extras** - small mods of their own, not part of the Overhaul, each a separate download (for now:
+  **Teleport**).
 
 The game's own files are never changed. Every mod is a folder of its own and can be switched on or off on its
 own. Texts in English, Russian, Polish and German. Works together with
@@ -26,6 +28,7 @@ own. Texts in English, Russian, Polish and German. Works together with
 - [Saves - please read](#saves---please-read)
 - [The framework's fixes](#the-frameworks-fixes)
 - [The Overhaul's mods](#the-overhauls-mods)
+- [Extras](#extras)
 - [Keys](#keys)
 - [Screen resolution and memory](#screen-resolution-and-memory)
 - [Languages](#languages)
@@ -48,6 +51,7 @@ own. Texts in English, Russian, Polish and German. Works together with
 |---|---|
 | `AttT_Mod_Framework_<version>.zip` | **Needed.** The mod manager, the framework and its five fixes. |
 | `AttT_Overhaul_<version>.zip` | The Overhaul's mods. Needs the framework. |
+| `AttT_Extra_<name>_<version>.zip` | An extra: a small mod of its own, with or without the Overhaul. Needs the framework. |
 | `AttT_Mod_Framework_<version>_Developer_Kit.zip` | Optional: tools and documentation for making your own mods. |
 
 Every zip has its own README with the full instructions. The program files (the manager and five DLLs) have
@@ -139,7 +143,10 @@ Each is a mod folder you can switch off in the manager.
 
 - **Unit rebalance** - troops rebalanced: archers and mages are weak in melee, the outliers are fixed
   (Olog-Shah, Fury, Assassin and others), and the army speed and range rings are capped. Every change is
-  listed in `Mods\unit_balance\balancing_changes.txt`.
+  listed in `Mods\unit_balance\balancing_changes.txt`. The three dark portals by Sir Gilbert's castle are three
+  different fights: the cult's mages, the undead with three summoners who raise the fallen, and the cult's heavy
+  infantry with spear throwers. The battle for Amaz no longer repeats its fights: the ship crews and the camp's
+  last army each have a crew of their own.
 - **Scapegoat fix** *(optional)* - Scapegoat can no longer freeze the whole enemy army when its target is
   boxed in.
 - **Spell rework** - lasting spells run for 3 turns, speed spells change speed sensibly, Dispel removes only
@@ -164,7 +171,8 @@ Each is a mod folder you can switch off in the manager.
   sets your stats and spells, you solve the fight, and you learn the altar's spell. Each needs a certain
   magic power.
 - **Combat school** - a COMBAT spell school for warriors: Throw Dagger, Sunder, Cleave, Bloodthirst,
-  Demoralise, Whirlwind and Execution. Each is won by beating a town's instructor in a duel of steel.
+  Demoralise, Whirlwind and Execution. Each is won by beating a town's instructor in a duel of steel. The
+  strikes swing your weapon instead of a mage's cast.
 - **Charm slot** - a new inventory slot for charms.
 - **Charms** *(needs Charm slot)* - charms with special battle effects - archers cannot shoot you, every enemy
   aims at you, you act first, you can raise the fallen, and more.
@@ -186,23 +194,34 @@ Each is a mod folder you can switch off in the manager.
 - **Edward's armour** - after Edward's fall, his castle gives you his armour - with his look. How fast his
   walk is can be set in its settings.
 - **Innkeeper gossip** - ask innkeepers "What's new around these parts?" - their rumours lead to quests.
-- **Companion levels** - named companions (Kira, Helga, Eneya, Rafael and others) grow in level with your hero
-  and learn new spells.
+- **Companion levels** - named companions (Kira, Helga, Eneya, Rafael and others) keep up with your hero: never
+  below his level, even when they join late, and they learn new spells.
 - **Companions** - new companions with stories of their own, and a proper goodbye for some old ones: each asks
   to be taken somewhere, says farewell and stays in the world.
+- **Kira's path** - Kira's way round the battalion on the sand spit near Fishmer, as she promised when she
+  joined.
 - **The hidden coven** - a hidden coven behind the mountains - Witches for hire, so a mage army can start
   early.
 - **Faith** - shrines across the land. Pray to hear the Warden's story, grow your FAITH, and learn seven HOLY
   spells from the monks. The Warden rewards the faithful.
 - **The Warden's Isle** *(needs Faith)* - strange lights on an island off the coast. Drive out what came
   through, and the Sisters of the Gate join your cause.
-- **The southern road** - Sir Gilbert's south gates open after the battle for Amaz - you walk south instead
-  of taking the broken portal.
-- **The south of Annaroth** - a whole new land in the south of Annaroth, reached through the dwarves' tunnel.
+- **The southern road** - Sir Gilbert's south gates open after the battle for Amaz - his own gate leaves swing
+  open, and you walk south instead of taking the broken portal.
+- **The south of Annaroth** - a whole new land in the south of Annaroth, reached through the dwarves' tunnel,
+  with ground of its own.
 - **Nemesis** - Grimwald's story: a hunter gone missing near Huntervill, a cult in the great pyramid, a vault
   of the ancients, the drained giants of the south, and the end of it all. Recruit the cult's casters along
   the way. One chapter takes place in the south of Annaroth: without that mod the story stops before it.
   Replaces the game's Aphorism of Gideon quest.
+
+## Extras
+
+Small mods of their own: not part of the Overhaul, and they work with or without it. Each is a separate
+download; install it with the manager's **Install...** button like any other mod.
+
+- **Teleport** - press X to jump about five steps forward, the way the hero is facing. The landing spot is
+  not checked, so you can jump fences, rocks and roofs. The key and the distance are in its settings.
 
 ## Keys
 
@@ -212,6 +231,7 @@ Each is a mod folder you can switch off in the manager.
 | Shift (hold) | Take the form of the beast and run fast - after the werewolf quest. |
 | C | In battle: finish the camera move at once (hold it to skip every camera move). Can be changed in the battle camera's settings. |
 | F9 / F10 | Mouse slower / faster. |
+| X | Jump forward (the Teleport extra). Can be changed in its settings. |
 
 ## Screen resolution and memory
 

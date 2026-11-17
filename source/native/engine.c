@@ -63,32 +63,85 @@ static void        (*lua_createtable)(lua_State *L, int narr, int nrec);
 static void        (*lua_setfield)(lua_State *L, int idx, const char *k);
 static void        (*lua_rawseti)(lua_State *L, int idx, int n);
 
-/* Each API function: distance from lua_pushnumber, expected first bytes
-   (0x100 = any byte, used for call targets) and where to store it.
-   Measured in the Steam exe 1.1.128.0 (lua_pushnumber at 0x4030A0). */
+/* Each API function: distance from lua_pushnumber and expected first bytes (0x100 = any byte,
+   used for call targets), per game build - the compilers laid lapi.c out differently.
+   AttT: measured in the Steam exe 1.1.128.0 (lua_pushnumber at 0x4030A0).
+   Valkyrie (the sequel): found by disassembly, 2026-11-14 (lua_pushnumber at 0x402EC0); its
+   functions have other code, but the same stack arguments. */
 #define ANY 0x100
-static const struct {
-    const char *name;
-    long delta;
-    short sig[12];
-    void **slot;
-} API[] = {
-    { "lua_gettop",      0x402A60 - 0x4030A0, { 0x8B,0x4C,0x24,0x04,0x8B,0x41,0x08,0x2B,0x41,0x0C,0xC1,0xF8 }, (void **)&lua_gettop },
-    { "lua_settop",      0x402A70 - 0x4030A0, { 0x8B,0x4C,0x24,0x08,0x85,0xC9,0x8B,0x44,0x24,0x04,0x7C,ANY  }, (void **)&lua_settop },
-    { "lua_type",        0x402C20 - 0x4030A0, { 0x8B,0x4C,0x24,0x08,0x8B,0x54,0x24,0x04,0xE8,ANY, ANY, ANY  }, (void **)&lua_type },
-    { "lua_tonumber",    0x402DE0 - 0x4030A0, { 0x8B,0x4C,0x24,0x08,0x8B,0x54,0x24,0x04,0x83,0xEC,0x0C,0x56 }, (void **)&lua_tonumber },
-    { "lua_tolstring",   0x402ED0 - 0x4030A0, { 0x53,0x55,0x8B,0x6C,0x24,0x10,0x56,0x57,0x8B,0x7C,0x24,0x14 }, (void **)&lua_tolstring },
-    { "lua_touserdata",  0x402FD0 - 0x4030A0, { 0x8B,0x4C,0x24,0x08,0x8B,0x54,0x24,0x04,0xE8,ANY, ANY, ANY  }, (void **)&lua_touserdata },
-    { "lua_pushnumber",  0,                   { 0x8B,0x44,0x24,0x04,0xD9,0x44,0x24,0x08,0x8B,0x48,0x08,0xD9 }, (void **)&lua_pushnumber },
-    { "lua_pushlstring", 0x4030E0 - 0x4030A0, { 0x53,0x8B,0x5C,0x24,0x08,0x8B,0x43,0x10,0x8B,0x48,0x44,0x3B }, (void **)&lua_pushlstring },
-    { "lua_pushstring",  0x403120 - 0x4030A0, { 0x51,0x53,0x55,0x8B,0x6C,0x24,0x14,0x85,0xED,0x56,0x57,0x75 }, (void **)&lua_pushstring },
-    { "lua_pushcclosure",0x4031F0 - 0x4030A0, { 0x53,0x8B,0x5C,0x24,0x08,0x8B,0x43,0x10,0x8B,0x48,0x44,0x3B }, (void **)&lua_pushcclosure },
-    { "lua_pushboolean", 0x403280 - 0x4030A0, { 0x8B,0x44,0x24,0x04,0x8B,0x48,0x08,0x33,0xD2,0x39,0x54,0x24 }, (void **)&lua_pushboolean },
-    { "lua_getfield",    0x403300 - 0x4030A0, { 0x55,0x8B,0xEC,0x83,0xE4,0xF8,0x8B,0x4D,0x0C,0x83,0xEC,0x0C }, (void **)&lua_getfield },
-    { "lua_createtable", 0x4033D0 - 0x4030A0, { 0x53,0x8B,0x5C,0x24,0x08,0x8B,0x43,0x10,0x8B,0x48,0x44,0x3B }, (void **)&lua_createtable },
-    { "lua_setfield",    0x4034F0 - 0x4030A0, { 0x55,0x8B,0xEC,0x83,0xE4,0xF8,0x8B,0x4D,0x0C,0x83,0xEC,0x0C }, (void **)&lua_setfield },
-    { "lua_rawseti",     0x403610 - 0x4030A0, { 0x55,0x8B,0xEC,0x83,0xE4,0xF8,0x83,0xEC,0x0C,0x8B,0x4D,0x0C }, (void **)&lua_rawseti },
+#define NAPI 15
+static const char *const API_NAME[NAPI] = {
+    "lua_gettop",
+    "lua_settop",
+    "lua_type",
+    "lua_tonumber",
+    "lua_tolstring",
+    "lua_touserdata",
+    "lua_pushnumber",
+    "lua_pushlstring",
+    "lua_pushstring",
+    "lua_pushcclosure",
+    "lua_pushboolean",
+    "lua_getfield",
+    "lua_createtable",
+    "lua_setfield",
+    "lua_rawseti",
 };
+static void **const API_SLOT[NAPI] = {
+    (void **)&lua_gettop,
+    (void **)&lua_settop,
+    (void **)&lua_type,
+    (void **)&lua_tonumber,
+    (void **)&lua_tolstring,
+    (void **)&lua_touserdata,
+    (void **)&lua_pushnumber,
+    (void **)&lua_pushlstring,
+    (void **)&lua_pushstring,
+    (void **)&lua_pushcclosure,
+    (void **)&lua_pushboolean,
+    (void **)&lua_getfield,
+    (void **)&lua_createtable,
+    (void **)&lua_setfield,
+    (void **)&lua_rawseti,
+};
+typedef struct { long delta; short sig[12]; } ApiAt;
+static const struct { const char *build; ApiAt at[NAPI]; } API_BUILDS[] = {
+    { "Ascension to the Throne", {
+        { 0x402A60 - 0x4030A0, { 0x8B,0x4C,0x24,0x04,0x8B,0x41,0x08,0x2B,0x41,0x0C,0xC1,0xF8 } },  /* lua_gettop */
+        { 0x402A70 - 0x4030A0, { 0x8B,0x4C,0x24,0x08,0x85,0xC9,0x8B,0x44,0x24,0x04,0x7C,ANY  } },  /* lua_settop */
+        { 0x402C20 - 0x4030A0, { 0x8B,0x4C,0x24,0x08,0x8B,0x54,0x24,0x04,0xE8,ANY, ANY, ANY  } },  /* lua_type */
+        { 0x402DE0 - 0x4030A0, { 0x8B,0x4C,0x24,0x08,0x8B,0x54,0x24,0x04,0x83,0xEC,0x0C,0x56 } },  /* lua_tonumber */
+        { 0x402ED0 - 0x4030A0, { 0x53,0x55,0x8B,0x6C,0x24,0x10,0x56,0x57,0x8B,0x7C,0x24,0x14 } },  /* lua_tolstring */
+        { 0x402FD0 - 0x4030A0, { 0x8B,0x4C,0x24,0x08,0x8B,0x54,0x24,0x04,0xE8,ANY, ANY, ANY  } },  /* lua_touserdata */
+        { 0, { 0x8B,0x44,0x24,0x04,0xD9,0x44,0x24,0x08,0x8B,0x48,0x08,0xD9 } },  /* lua_pushnumber */
+        { 0x4030E0 - 0x4030A0, { 0x53,0x8B,0x5C,0x24,0x08,0x8B,0x43,0x10,0x8B,0x48,0x44,0x3B } },  /* lua_pushlstring */
+        { 0x403120 - 0x4030A0, { 0x51,0x53,0x55,0x8B,0x6C,0x24,0x14,0x85,0xED,0x56,0x57,0x75 } },  /* lua_pushstring */
+        { 0x4031F0 - 0x4030A0, { 0x53,0x8B,0x5C,0x24,0x08,0x8B,0x43,0x10,0x8B,0x48,0x44,0x3B } },  /* lua_pushcclosure */
+        { 0x403280 - 0x4030A0, { 0x8B,0x44,0x24,0x04,0x8B,0x48,0x08,0x33,0xD2,0x39,0x54,0x24 } },  /* lua_pushboolean */
+        { 0x403300 - 0x4030A0, { 0x55,0x8B,0xEC,0x83,0xE4,0xF8,0x8B,0x4D,0x0C,0x83,0xEC,0x0C } },  /* lua_getfield */
+        { 0x4033D0 - 0x4030A0, { 0x53,0x8B,0x5C,0x24,0x08,0x8B,0x43,0x10,0x8B,0x48,0x44,0x3B } },  /* lua_createtable */
+        { 0x4034F0 - 0x4030A0, { 0x55,0x8B,0xEC,0x83,0xE4,0xF8,0x8B,0x4D,0x0C,0x83,0xEC,0x0C } },  /* lua_setfield */
+        { 0x403610 - 0x4030A0, { 0x55,0x8B,0xEC,0x83,0xE4,0xF8,0x83,0xEC,0x0C,0x8B,0x4D,0x0C } },  /* lua_rawseti */
+    } },
+    { "Ascension to the Throne: Valkyrie", {
+        { 0x402870 - 0x402EC0, { 0x8B,0x4C,0x24,0x04,0x8B,0x41,0x08,0x2B,0x41,0x0C,0xC1,0xF8 } },  /* lua_gettop */
+        { 0x402880 - 0x402EC0, { 0x8B,0x4C,0x24,0x08,0x85,0xC9,0x8B,0x44,0x24,0x04,0x7C,ANY } },  /* lua_settop */
+        { 0x402A30 - 0x402EC0, { 0x8B,0x4C,0x24,0x08,0x8B,0x54,0x24,0x04,0xE8,ANY, ANY, ANY } },  /* lua_type */
+        { 0x402BF0 - 0x402EC0, { 0x8B,0x4C,0x24,0x08,0x8B,0x54,0x24,0x04,0x83,0xEC,0x0C,0x56 } },  /* lua_tonumber */
+        { 0x402CE0 - 0x402EC0, { 0x51,0x53,0x8B,0x5C,0x24,0x10,0x56,0x57,0x8B,0x7C,0x24,0x14 } },  /* lua_tolstring */
+        { 0x402DF0 - 0x402EC0, { 0x8B,0x4C,0x24,0x08,0x8B,0x54,0x24,0x04,0xE8,ANY, ANY, ANY } },  /* lua_touserdata */
+        { 0, { 0x8B,0x44,0x24,0x04,0xD9,0x44,0x24,0x08,0x8B,0x48,0x08,0xD9 } },  /* lua_pushnumber */
+        { 0x402F00 - 0x402EC0, { 0x56,0x8B,0x74,0x24,0x08,0x8B,0x46,0x10,0x8B,0x48,0x44,0x3B } },  /* lua_pushlstring */
+        { 0x402F40 - 0x402EC0, { 0x51,0x53,0x55,0x8B,0x6C,0x24,0x14,0x85,0xED,0x56,0x57,0x75 } },  /* lua_pushstring */
+        { 0x403010 - 0x402EC0, { 0x53,0x55,0x56,0x8B,0x74,0x24,0x10,0x8B,0x46,0x10,0x8B,0x48 } },  /* lua_pushcclosure */
+        { 0x4030B0 - 0x402EC0, { 0x8B,0x44,0x24,0x04,0x8B,0x48,0x08,0x33,0xD2,0x39,0x54,0x24 } },  /* lua_pushboolean */
+        { 0x403130 - 0x402EC0, { 0x55,0x8B,0xEC,0x83,0xE4,0xF8,0x8B,0x4D,0x0C,0x83,0xEC,0x0C } },  /* lua_getfield */
+        { 0x403200 - 0x402EC0, { 0x56,0x8B,0x74,0x24,0x08,0x8B,0x46,0x10,0x8B,0x48,0x44,0x3B } },  /* lua_createtable */
+        { 0x403320 - 0x402EC0, { 0x55,0x8B,0xEC,0x83,0xE4,0xF8,0x8B,0x4D,0x0C,0x83,0xEC,0x0C } },  /* lua_setfield */
+        { 0x403400 - 0x402EC0, { 0x55,0x8B,0xEC,0x83,0xE4,0xF8,0x83,0xEC,0x0C,0x8B,0x4D,0x0C } },  /* lua_rawseti */
+    } },
+};
+static const char *api_build = "";
 
 /* Unit (TacticCreature) layout, confirmed by Attach. */
 #define U_NAME       0x00C
@@ -194,7 +247,7 @@ static DWORD find_store_of(DWORD value)
 static int bind_api(void)
 {
     DWORD str, slot, gh, a, pushnumber = 0;
-    size_t i;
+    size_t i, b;
 
     if (api_state >= 0)
         return api_state;
@@ -230,17 +283,23 @@ static int bind_api(void)
     if (pushnumber == 0 || !is_code(pushnumber) || !readable(global_state, 4))
         return fail("lua_pushnumber not found in GetHeight");
 
-    /* 3. the rest of lapi.c around it */
-    for (i = 0; i < sizeof(API) / sizeof(API[0]); i++) {
-        DWORD f = pushnumber + API[i].delta;
-        if (!is_code(f) || !match(f, API[i].sig, 12)) {
-            snprintf(api_error, sizeof(api_error), "%s does not match", API[i].name);
-            return api_state = 0;
+    /* 3. the rest of lapi.c around it, laid out as one of the known builds */
+    for (b = 0; b < sizeof(API_BUILDS) / sizeof(API_BUILDS[0]); b++) {
+        for (i = 0; i < NAPI; i++) {
+            DWORD f = pushnumber + API_BUILDS[b].at[i].delta;
+            if (!is_code(f) || !match(f, API_BUILDS[b].at[i].sig, 12))
+                break;
         }
+        if (i == NAPI) {
+            for (i = 0; i < NAPI; i++)
+                *API_SLOT[i] = (void *)(pushnumber + API_BUILDS[b].at[i].delta);
+            api_build = API_BUILDS[b].build;
+            return api_state = 1;
+        }
+        if (b == 0)
+            snprintf(api_error, sizeof(api_error), "%s does not match", API_NAME[i]);
     }
-    for (i = 0; i < sizeof(API) / sizeof(API[0]); i++)
-        *API[i].slot = (void *)(pushnumber + API[i].delta);
-    return api_state = 1;
+    return api_state = 0;
 }
 
 /* ---------------------------------------------------------------- helpers */
@@ -378,7 +437,7 @@ static int collect_units(DWORD *out, int max)
 
 static int e_version(lua_State *L)
 {
-    lua_pushstring(L, "engine 14");
+    lua_pushstring(L, "engine 17");
     return 1;
 }
 
@@ -610,11 +669,20 @@ static int e_hit_unit(lua_State *L)
     dmg = (int)amount;
     if (dmg < 0) dmg = 0;
     if (dmg > hp) dmg = hp;
+    /* engine 15: the damage first, then the reaction - the vanilla spells' order. The reaction picks
+       the death animation from health minus the pending damage, and with a short delay it starts at
+       once: set the other way round, a killing hit played the defence animation and left the unit at
+       0 health, frozen and untargetable instead of dying (Volley, user 2026-11-15). */
+    {
+        lua_Number from[2];
+        from[0] = args[0]; from[1] = args[1];
+        args[0] = (lua_Number)dmg;
+        call_method(L, u, "SetSubHealth", args, 1);
+        lua_settop(L, top);
+        args[0] = from[0]; args[1] = from[1];
+    }
     args[2] = delay;
     call_method(L, u, "PlayDefense", args, 3);
-    lua_settop(L, top);
-    args[0] = (lua_Number)dmg;
-    call_method(L, u, "SetSubHealth", args, 1);
     lua_settop(L, top);
     lua_pushnumber(L, (lua_Number)dmg);
     return 1;
@@ -1276,7 +1344,9 @@ static int e_losable_done(lua_State *L)
 /* engine 13: two more factors per unit for item effects (tiered_items.lua), multiplied with
    factor so no mod overwrites another's: guard = every hit, spell_guard = only hits set through
    the Lua SetSubHealth path (spells, ModAPI.Battle.Hit) - the engine's own blows never go there. */
-static struct { DWORD unit; int amount; float factor, guard, spell_guard; } shields[MAX_SHIELDS];   /* factors 0 = 1 */
+/* engine 16: a spell ward per unit (the Amulet of Warding): a spell hit, after every factor, is cut by
+   ward_pct of it but by at least ward_min points (never below 0) - a factor alone cannot promise a minimum. */
+static struct { DWORD unit; int amount; float factor, guard, spell_guard, ward_pct; int ward_min; } shields[MAX_SHIELDS];   /* factors 0 = 1 */
 static int shield_absorbed = 0;                  /* absorbed since Engine.ShieldAbsorbed() */
 static int shield_patched = 0;
 
@@ -1304,6 +1374,12 @@ void __cdecl shield_absorb_how(DWORD u, int spell)
             hp = *(int *)(u + U_HEALTH);
             if (pending > hp) pending = hp;
             if (pending < 0) pending = 0;
+            *(int *)(u + U_PENDING) = pending;
+        }
+        if (spell && pending > 0 && (shields[i].ward_pct > 0 || shields[i].ward_min > 0)) {
+            int cut = (int)floorf((float)pending * shields[i].ward_pct + 0.5f);
+            if (cut < shields[i].ward_min) cut = shields[i].ward_min;
+            pending = cut >= pending ? 0 : pending - cut;
             *(int *)(u + U_PENDING) = pending;
         }
         if (shields[i].amount > 0) {
@@ -1336,6 +1412,8 @@ static int shield_slot(DWORD u)
         shields[free_slot].factor = 0;
         shields[free_slot].guard = 0;
         shields[free_slot].spell_guard = 0;
+        shields[free_slot].ward_pct = 0;
+        shields[free_slot].ward_min = 0;
     }
     return free_slot;
 }
@@ -1344,7 +1422,7 @@ static int shield_slot(DWORD u)
 static void shield_tidy(int i)
 {
     if (shields[i].amount <= 0 && factor_of(shields[i].factor) == 1.0f && factor_of(shields[i].guard) == 1.0f &&
-        factor_of(shields[i].spell_guard) == 1.0f)
+        factor_of(shields[i].spell_guard) == 1.0f && shields[i].ward_pct <= 0 && shields[i].ward_min <= 0)
         shields[i].unit = 0;
 }
 
@@ -1500,6 +1578,31 @@ static int e_set_guard(lua_State *L)
     return 1;
 }
 
+/* engine 16: Engine.SetSpellWard(u, pct, min) -> true: every later SPELL hit on u (the Lua SetSubHealth
+   path: spells and ModAPI.Battle.Hit), after all factors, is cut by pct (0..0.95) of it, but by at least
+   min points (0..100000); 0, 0 removes it. */
+static int e_set_spell_ward(lua_State *L)
+{
+    DWORD u = arg_handle(L, 1);
+    lua_Number pct, mn;
+    int i;
+
+    if (!valid_unit(u) || !arg_number(L, 2, &pct) || !arg_number(L, 3, &mn) || !patch_shield())
+        return 0;
+    if (pct < 0) pct = 0;
+    if (pct > 0.95f) pct = 0.95f;
+    if (mn < 0) mn = 0;
+    if (mn > 100000) mn = 100000;
+    i = shield_slot(u);
+    if (i < 0)
+        return 0;
+    shields[i].ward_pct = (float)pct;
+    shields[i].ward_min = (int)mn;
+    shield_tidy(i);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
 /* Engine.Shield(u) -> what is left of u's shield (0 if none) */
 static int e_shield(lua_State *L)
 {
@@ -1644,6 +1747,125 @@ static int e_spell_class(lua_State *L)
     return 1;
 }
 
+/* ---------------------------------------------------------------- action clips
+ * A battle unit keeps one ACTION LIST per action, built from its Lua Animation table when the
+ * battle starts (0x5156AA.., constructor 0x4CB990): wait +0x228, run +0x22C, attack +0x234,
+ * ranged +0x238, defence +0x23C, death +0x240, cast +0x244; +0x224 = the action playing now,
+ * +0x220 = the clip playing now. An action list (vtable 0x611CE8): +8 = &unit+0x220, +0xC = the
+ * clip queued for the next start, +0x14/+0x18 = vector of {clip, cumulative weight}. A clip
+ * (vtable 0x60863C): std::string file name at +8 (text or pointer +0xC, capacity +0x20).
+ * Starting an action (0x4CAFE0) plays the queued clip, THEN picks the next one from the list -
+ * so queueing a clip changes exactly the next start. GetCritKeyCast (0x513640) reads the key
+ * frame of the playing action's queued clip. */
+#define LIST_VTABLE  0x611CE8
+#define CLIP_VTABLE  0x60863C
+#define U_CLIP_NOW   0x220
+
+static const struct { const char *name; DWORD off; } ACTIONS[] = {
+    { "wait", 0x228 }, { "run", 0x22C }, { "attack", 0x234 }, { "ranged", 0x238 },
+    { "defense", 0x23C }, { "death", 0x240 }, { "cast", 0x244 },
+};
+
+static int clips_code_ok(void)
+{
+    static const short ctor[] = { 0xC7, 0x06, 0xE8, 0x1C, 0x61, 0x00 };                 /* 0x4CB9BB */
+    static const short play[] = { 0x53, 0x56, 0x8B, 0xF1, 0x8B, 0x46, 0x08, 0x8B, 0x4E, 0x0C }; /* 0x4CAFE0 */
+    static const short key[] = { 0x8B, 0x81, 0x24, 0x02, 0x00, 0x00, 0x8B, 0x48, 0x0C }; /* 0x513658 */
+    static const short clip[] = { 0xC7, 0x06, 0x3C, 0x86, 0x60, 0x00 };                 /* 0x42B2FE */
+    static int ok = -1;
+
+    if (ok < 0)
+        ok = match(0x4CB9BB, ctor, 6) && match(0x4CAFE0, play, 10) && match(0x513658, key, 9) &&
+             match(0x42B2FE, clip, 6);
+    return ok;
+}
+
+/* the unit's action list `name` with its clips, or 0 when anything does not look as expected */
+static DWORD action_list(DWORD u, const char *name, DWORD **clips, int *n)
+{
+    DWORD list, b, e;
+    int i;
+
+    if (!clips_code_ok() || !valid_unit(u) || name == NULL)
+        return 0;
+    for (i = 0; i < (int)(sizeof(ACTIONS) / sizeof(ACTIONS[0])); i++)
+        if (strcmp(ACTIONS[i].name, name) == 0)
+            break;
+    if (i == (int)(sizeof(ACTIONS) / sizeof(ACTIONS[0])) || !readable((void *)(u + ACTIONS[i].off), 4))
+        return 0;
+    list = *(DWORD *)(u + ACTIONS[i].off);
+    if (!readable((void *)list, 0x20) || *(DWORD *)list != LIST_VTABLE || *(DWORD *)(list + 8) != u + U_CLIP_NOW)
+        return 0;
+    b = *(DWORD *)(list + 0x14);
+    e = *(DWORD *)(list + 0x18);
+    if (e < b || (e - b) % 8 != 0 || (e - b) / 8 > 64 || (e > b && !readable((void *)b, e - b)))
+        return 0;
+    for (i = 0; i < (int)((e - b) / 8); i++) {
+        DWORD c = ((DWORD *)b)[i * 2];
+        if (!readable((void *)c, 0x24) || *(DWORD *)c != CLIP_VTABLE)
+            return 0;
+    }
+    *clips = (DWORD *)b;
+    *n = (e - b) / 8;
+    return list;
+}
+
+/* Engine.ActionClips(u, action) -> list of the clips' file names (lower case), in list order */
+static int e_action_clips(lua_State *L)
+{
+    DWORD *clips, list = 0;
+    int n = 0, i;
+
+    list = action_list(arg_handle(L, 1), lua_tolstring(L, 2, NULL), &clips, &n);
+    if (list == 0)
+        return 0;
+    lua_createtable(L, n, 0);
+    for (i = 0; i < n; i++) {
+        DWORD c = clips[i * 2];
+        unsigned cap = *(unsigned *)(c + 0x20);
+        const char *text = cap >= 16 ? *(const char **)(c + 0xC) : (const char *)(c + 0xC);
+        int k = 0;
+        while (k < 128 && readable(text + k, 1) && text[k] != '\0')
+            k++;
+        lua_pushlstring(L, readable(text, 1) ? text : "", k < 128 ? k : 0);
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 1;
+}
+
+/* Engine.QueuedClip(u, action) -> the position (1..n) of the clip queued for the action's next start */
+static int e_queued_clip(lua_State *L)
+{
+    DWORD *clips, list;
+    int n = 0, i;
+
+    list = action_list(arg_handle(L, 1), lua_tolstring(L, 2, NULL), &clips, &n);
+    if (list == 0)
+        return 0;
+    for (i = 0; i < n; i++)
+        if (clips[i * 2] == *(DWORD *)(list + 0xC)) {
+            lua_pushnumber(L, i + 1);
+            return 1;
+        }
+    return 0;
+}
+
+/* Engine.QueueClip(u, action, i) -> true: the action's next start plays clip i (1..n) of its own
+   list; the engine picks normally again afterwards */
+static int e_queue_clip(lua_State *L)
+{
+    DWORD *clips, list;
+    int n = 0;
+    lua_Number i;
+
+    list = action_list(arg_handle(L, 1), lua_tolstring(L, 2, NULL), &clips, &n);
+    if (list == 0 || !arg_number(L, 3, &i) || i < 1 || i > n)
+        return 0;
+    *(DWORD *)(list + 0xC) = clips[((int)i - 1) * 2];
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
 typedef struct { const char *name; lua_CFunction fn; } Reg;
 
 static const Reg FUNCS[] = {
@@ -1678,8 +1900,12 @@ static const Reg FUNCS[] = {
     { "ShieldAbsorbed", e_shield_absorbed },
     { "SetDamageFactor", e_set_damage_factor },
     { "SetGuard", e_set_guard },
+    { "SetSpellWard", e_set_spell_ward },
     { "LastBlow", e_last_blow },
     { "SpellClass", e_spell_class },
+    { "ActionClips", e_action_clips },
+    { "QueuedClip", e_queued_clip },
+    { "QueueClip", e_queue_clip },
 };
 
 static const Reg DEBUG_FUNCS[] = {
