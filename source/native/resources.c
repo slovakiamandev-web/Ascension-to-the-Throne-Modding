@@ -1832,6 +1832,7 @@ static int edit_gdl(Buf *b, const char *name)
     DWORD nroots, i, o = 20, tail;
     int k, applied = 0;
     Buf out = { NULL, 0 };
+    unsigned char *original = NULL;   /* the records point into it: freed only after them */
 
     if (b->n < 20 || memcmp(b->d, "GMDL", 4) != 0)
         return -1;
@@ -1882,7 +1883,7 @@ static int edit_gdl(Buf *b, const char *name)
         for (i = 0; ok && i < nroots; i++)
             ok = rec_write(&out, roots[i]);
         if (ok && buf_add(&out, b->d + tail, b->n - tail)) {
-            free(b->d);
+            original = b->d;
             *b = out;
             out.d = NULL;
         } else
@@ -1904,6 +1905,7 @@ static int edit_gdl(Buf *b, const char *name)
     free(out.d);
     for (i = 0; i < nroots; i++)
         rec_free(roots[i]);
+    free(original);
     return applied;
 }
 

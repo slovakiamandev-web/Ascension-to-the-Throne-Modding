@@ -1,6 +1,6 @@
 # Source code of the AttT Mod Framework's programs
 
-The source of every program file in the **AttT Mod Framework 2.0.1** download: the five DLLs in
+The source of every program file in the **AttT Mod Framework 2.0.2** download: the five DLLs in
 `ModFramework\` and `AttT Mod Manager.exe`. Everything else in the download is plain text (Lua scripts,
 settings, READMEs) or data.
 
@@ -54,15 +54,15 @@ With the C# compiler that comes with Windows (.NET Framework 4.x):
 
 (The C# compiler stamps each build with a new id, so a rebuild is never byte-identical.)
 
-## SHA-256 of the released files (AttT_Mod_Framework_2.0.1.zip)
+## SHA-256 of the released files (AttT_Mod_Framework_2.0.2.zip)
 
 ```
-c7abafd430dab50c322e290c8a8f4889382ceb29715a10f488aa578b70c6c1b2  AttT Mod Manager.exe
+5e1a13baf07f71663cc32c814f9c7dda262a296bedbf9e93d6c0edcf82c09f12  AttT Mod Manager.exe
 2c1190251032498b7e4390f91a78d8f8b7a864b1aee4333181a33f1cb6293491  ModFramework/engine.dll
 2e726fbd7da095346cbf62041c43ba011efe4faac9f4737c26fc4ae0f57d8d34  ModFramework/keybridge.dll
 e46e586a39d43c34afb1a12b658a01cebf5a490395976d809fc744281c84cf85  ModFramework/leakfix.dll
 40d79feeca5d430ee750fbcc564a6f49e6ab4d4c33d0542374e50c5b87dadb56  ModFramework/mousescale.dll
-5acb81f4b2042406c2148e783ed103726037bd30d1f502a32bde0dea79ac5938  ModFramework/resources.dll
+137142301602635c313f5f61fc13f22361302ee6b62511e42ffb103a9ee3f35a  ModFramework/resources.dll
 ```
 
 The comments in the sources refer to the development project's own notes and folders (`CLAUDE.md`,
